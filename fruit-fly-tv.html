@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#07060c">
+<title>Fruit Fly TV</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#07060c; font-family: system-ui, -apple-system, Segoe UI, sans-serif; color:#eee; overscroll-behavior:none; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  #webgl canvas { touch-action:none; }
+  /* touch bar: only on touch devices, where the keyboard shortcuts don't exist */
+  #touchbar { display:none; position:absolute; inset:0; z-index:3; pointer-events:none; }
+  #touchbar .side { position:absolute; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:14px; pointer-events:auto; }
+  #touchbar #sideL { left:calc(10px + env(safe-area-inset-left)); }
+  #touchbar #sideR { right:calc(10px + env(safe-area-inset-right)); }
+  #touchbar button { width:50px; height:50px; border-radius:50%; border:1px solid rgba(255,255,255,.18); background:rgba(10,10,20,.55); backdrop-filter:blur(8px); color:#fff; font-size:22px; line-height:1; padding:0; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,.35); touch-action:manipulation; }
+  #touchbar button:active { background:rgba(80,120,200,.6); }
+  #touchbar button.on { background:rgba(255,212,121,.85); color:#000; }
+  @media (pointer: coarse) { #touchbar { display:block; } #hint .keys { display:none; } }
+  body.touch #touchbar { display:block; } body.touch #hint .keys { display:none; }
+  #css3d, #webgl { position:absolute; inset:0; }
+  #css3d { z-index:0; }
+  #webgl { z-index:1; }
+  #webgl.passthrough { pointer-events:none; }
+  #webgl.passthrough + #ui .hint-tv { display:inline; }
+  #ui { position:absolute; z-index:2; top:12px; left:12px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+        background:rgba(14,12,24,.72); backdrop-filter: blur(10px); padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.1);
+        max-width: calc(100vw - 24px); box-sizing:border-box; }
+  #ui input { width:min(360px, 60vw); padding:8px 10px; border-radius:9px; border:1px solid rgba(255,255,255,.15); background:rgba(0,0,0,.35); color:#fff; font-size:14px; outline:none; }
+  #ui input:focus { border-color:#7fb0ff; }
+  #ui button { padding:8px 12px; border-radius:9px; border:1px solid rgba(255,255,255,.15); background:#2c2a44; color:#fff; font-size:14px; cursor:pointer; }
+  #ui button:hover { background:#3b3860; }
+  #ui button.primary { background:#e33c3c; border-color:#ff6b6b; }
+  #ui button.primary:hover { background:#ff4d4d; }
+  #ui label.toggle { display:flex; align-items:center; gap:6px; font-size:13px; opacity:.9; cursor:pointer; user-select:none; }
+  #ui label.toggle input { width:auto; }
+  #status { display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 10px; border-radius:9px; background:rgba(0,0,0,.35); border:1px solid rgba(255,255,255,.12); max-width:min(420px, 70vw); }
+  #statusText { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #chan { color:#9fc4ff; font-size:13px; text-decoration:none; } #chan:hover { text-decoration:underline; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#777; flex:none; }
+  .dot.live { background:#ff3b3b; box-shadow:0 0 0 0 rgba(255,59,59,.7); animation:pulse 1.6s infinite; }
+  .dot.wait { background:#e0a53a; }
+  .dot.warn { background:#b45cff; }
+  @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(255,59,59,.7); } 70% { box-shadow:0 0 0 8px rgba(255,59,59,0); } 100% { box-shadow:0 0 0 0 rgba(255,59,59,0); } }
+  .nosignal .pulse { width:18px; height:18px; border-radius:50%; background:#ff3b3b; animation:pulse 1.6s infinite; margin-bottom:6px; }
+  #hint { position:absolute; z-index:2; bottom:12px; left:12px; font-size:12px; opacity:.55; pointer-events:none; transition:opacity 1.5s; }
+  #hint.fade { opacity:0; }
+  #hint b { color:#ffd479; font-weight:600; }
+  .hint-tv { display:none; color:#ffd479; }
+  #toast { position:absolute; z-index:3; bottom:44px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.75); padding:8px 14px; border-radius:10px; font-size:13px; opacity:0; transition:opacity .3s; pointer-events:none; }
+  #toast.show { opacity:1; }
+  /* The TV screen element that lives inside the 3D scene */
+  .tvscreen { width:640px; height:360px; background:#05070c; overflow:hidden; position:relative; }
+  .tvscreen iframe { width:640px; height:360px; border:0; display:block; }
+  .nosignal { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:#9fb3d9; font-size:22px; letter-spacing:.18em;
+              background: repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 2px, transparent 2px 4px), radial-gradient(ellipse at center, #151a2c, #05070c 70%); }
+  .nosignal small { font-size:13px; letter-spacing:.05em; opacity:.7; }
+  .nosignal .bars { display:flex; width:70%; height:26px; border-radius:4px; overflow:hidden; opacity:.5; }
+  .nosignal .bars i { flex:1; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="css3d"></div>
+<div id="webgl"></div>
+<div id="hint"><span id="soundHint">🔇 tap anywhere for sound · </span>drag to orbit · pinch or scroll to zoom<span class="keys"> · <b>M</b> mute · <b>N</b> next video · <b>T</b> click the TV · <b>F</b> fly · <b>B</b> brain</span></div>
+<div id="touchbar">
+  <div class="side" id="sideL">
+    <button id="tbSound" title="Mute / unmute">🔊</button>
+    <button id="tbNext" title="Next video">⏭</button>
+  </div>
+  <div class="side" id="sideR">
+    <button id="tbTv" title="Tap the TV player">📺</button>
+    <button id="tbBrain" title="Brain hologram">🧠</button>
+    <button id="tbFly" title="Take a lap">🪰</button>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+
+// ================================================================ CONFIG
+// The one YouTube channel the TV is tuned to. Change the handle (and the id, found on the
+// channel page as "externalId" / in the /channel/UC… URL) to watch a different channel.
+const CHANNEL = { handle: '@chokarella', id: 'UCnsj4aa0CVNpL54d5qLvgMw', name: 'Chokarella' };
+const CHECK_EVERY_SECONDS = 60;   // how often to ask whether the channel is live
+
+// The fly's brain: real neurons from the FlyWire whole-brain Drosophila connectome (FAFB, segmented with
+// Google Research's flood-filling networks), served by Virtual Fly Brain in JRC2018 template coordinates.
+// Each entry: VFB id, short name, group. Groups light up depending on what the fly is doing.
+const NEURONS = [
+  { id: 'VFB_00102fng', name: 'Mi1',   group: 'visual',   note: 'medulla · brightness' },
+  { id: 'VFB_00102fn2', name: 'T4a',   group: 'visual',   note: 'motion detector' },
+  { id: 'VFB_00102fn6', name: 'T4a',   group: 'visual',   note: 'motion detector' },
+  { id: 'VFB_00102guc', name: 'LC4',   group: 'visual',   note: 'looming detector' },
+  { id: 'VFB_00102gud', name: 'LC4',   group: 'visual',   note: 'looming detector' },
+  { id: 'VFB_00102gyu', name: 'HSN',   group: 'flow',     note: 'optic flow · lobula plate' },
+  { id: 'VFB_00102h07', name: 'H2',    group: 'flow',     note: 'optic flow' },
+  { id: 'VFB_00102gvv', name: 'DNp01 giant fiber', group: 'escape', note: 'takeoff command' },
+  { id: 'VFB_00102gvy', name: 'DNp02', group: 'escape',   note: 'descending · takeoff' },
+  { id: 'VFB_00102h0r', name: 'DNa02', group: 'steer',    note: 'descending · steering' },
+  { id: 'VFB_001014dk', name: 'PAM-γ5', group: 'reward',  note: 'dopamine · reward' },
+  { id: 'VFB_001014f8', name: "PAM-β'2a", group: 'reward', note: 'dopamine · reward' },
+  { id: 'VFB_0010140w', name: 'PPL1-γ1pedc', group: 'punish', note: 'dopamine · aversive' },
+  { id: 'VFB_001014ie', name: 'PPL1-γ1', group: 'punish', note: 'dopamine · aversive' },
+  { id: 'VFB_0010120e', name: 'mALT lvPN', group: 'smell', note: 'olfactory projection neuron' },
+  { id: 'VFB_001029a9', name: 'aMe12', group: 'clock',    note: 'accessory medulla · circadian' },
+];
+const GROUP_COLOR = { visual: 0x4fd8ff, flow: 0x37b6ff, escape: 0xffa040, steer: 0xffd166, reward: 0xff4fd8, punish: 0xc040ff, smell: 0x8cff5a, clock: 0xb08cff };
+
+// ---------------------------------------------------------------- quality profile
+// Phones and tablets get a lighter scene: fewer shadow maps, lower pixel ratio, a decimated brain mesh,
+// thinner neuron skeletons and fewer sparks. Add ?quality=high or ?quality=low to the URL to force it.
+const params = new URLSearchParams(location.search);
+const forcedQuality = params.get('quality');
+const isTouch = matchMedia('(pointer: coarse)').matches || params.get('touch') === '1';
+if (isTouch) document.body.classList.add('touch');
+const LOW = forcedQuality ? forcedQuality === 'low' : (isTouch || innerWidth < 700 || (navigator.hardwareConcurrency || 8) <= 4);
+const Q = LOW
+  ? { pixelRatio: 1.25, shadowMap: 1024, lampShadow: false, brainLod: 'low', neuronNodes: 1200, sparks: 220 }
+  : { pixelRatio: 2, shadowMap: 2048, lampShadow: true, brainLod: 'full', neuronNodes: 3500, sparks: 600 };
+
+// ---------------------------------------------------------------- renderers
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 100);
+const portrait = innerHeight > innerWidth * 1.1;
+if (portrait) camera.position.set(1.1, 2.4, 5.0); else camera.position.set(3.0, 2.6, 3.2);
+// keep roughly the same horizontal field of view on narrow windows
+function fitFov() {
+  camera.aspect = innerWidth / innerHeight;
+  const v = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(37)) / camera.aspect));
+  camera.fov = THREE.MathUtils.clamp(v, 40, 75);
+  camera.updateProjectionMatrix();
+}
+fitFov();
+
+const glRenderer = new THREE.WebGLRenderer({ antialias: !LOW || devicePixelRatio < 2, alpha: true, powerPreference: 'high-performance' });
+glRenderer.setPixelRatio(Math.min(devicePixelRatio, Q.pixelRatio));
+glRenderer.setSize(innerWidth, innerHeight);
+glRenderer.setClearColor(0x000000, 0);
+glRenderer.shadowMap.enabled = true;
+glRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+glRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+glRenderer.toneMappingExposure = 1.05;
+glRenderer.outputColorSpace = THREE.SRGBColorSpace;
+const webglDiv = document.getElementById('webgl');
+webglDiv.appendChild(glRenderer.domElement);
+
+const cssRenderer = new CSS3DRenderer();
+cssRenderer.setSize(innerWidth, innerHeight);
+document.getElementById('css3d').appendChild(cssRenderer.domElement);
+
+const controls = new OrbitControls(camera, glRenderer.domElement);
+if (portrait) controls.target.set(-0.25, 1.05, -0.9); else controls.target.set(0.1, 0.95, 0.2);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 0.6;
+controls.maxDistance = 9;
+controls.maxPolarAngle = Math.PI / 2 + 0.05;
+controls.update();
+
+// ---------------------------------------------------------------- helpers
+function canvasTexture(w, h, draw, repeat) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat[0], repeat[1]); }
+  return t;
+}
+function box(w, h, d, mat, x, y, z, parent = scene) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
+  parent.add(m); return m;
+}
+function cyl(rt, rb, h, mat, x, y, z, parent = scene, seg = 16) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
+  parent.add(m); return m;
+}
+function sphere(r, mat, x, y, z, parent = scene, seg = 20) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, seg, seg), mat);
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
+  parent.add(m); return m;
+}
+const _up = new THREE.Vector3(0, 1, 0);
+function segment(a, b, r, mat, parent) {
+  const d = new THREE.Vector3().subVectors(b, a); const len = d.length();
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.7, len, 6), mat);
+  m.position.copy(a).addScaledVector(d, 0.5);
+  m.quaternion.setFromUnitVectors(_up, d.normalize());
+  m.castShadow = true; parent.add(m); return m;
+}
+const easeInOut = x => x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// ---------------------------------------------------------------- room
+const ROOM = { w: 10, h: 3.4, d: 9 };
+const wallMat = new THREE.MeshStandardMaterial({ color: 0xb9a78f, roughness: 0.95 });
+const trimMat = new THREE.MeshStandardMaterial({ color: 0xf1ebe0, roughness: 0.6 });
+const darkWood = new THREE.MeshStandardMaterial({ color: 0x2f241b, roughness: 0.55 });
+
+const floorTex = canvasTexture(512, 512, (g, w, h) => {
+  g.fillStyle = '#6a4a2e'; g.fillRect(0, 0, w, h);
+  const ph = 64;
+  for (let y = 0; y < h; y += ph) {
+    const off = ((y / ph) % 2) * 128;
+    for (let x = -256; x < w + 256; x += 256) {
+      g.fillStyle = `hsl(26, 42%, ${34 + Math.random() * 16}%)`;
+      g.fillRect(x + off + 2, y + 2, 252, ph - 4);
+    }
+  }
+  g.strokeStyle = 'rgba(0,0,0,0.13)'; g.lineWidth = 1;
+  for (let i = 0; i < 400; i++) {
+    const y = Math.random() * h, x = Math.random() * w;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + rand(20, 120), y + rand(-2, 2)); g.stroke();
+  }
+}, [4, 3.6]);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.65 }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.w, ROOM.d), new THREE.MeshStandardMaterial({ color: 0xe9e3d8, roughness: 1 }));
+ceiling.rotation.x = Math.PI / 2; ceiling.position.y = ROOM.h; scene.add(ceiling);
+
+function wall(w, h, x, y, z, ry) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), wallMat);
+  m.position.set(x, y, z); m.rotation.y = ry; m.receiveShadow = true; scene.add(m); return m;
+}
+wall(ROOM.w, ROOM.h, 0, ROOM.h / 2, -ROOM.d / 2, 0);          // back
+wall(ROOM.w, ROOM.h, 0, ROOM.h / 2, ROOM.d / 2, Math.PI);     // front
+wall(ROOM.d, ROOM.h, -ROOM.w / 2, ROOM.h / 2, 0, Math.PI / 2); // left
+wall(ROOM.d, ROOM.h, ROOM.w / 2, ROOM.h / 2, 0, -Math.PI / 2); // right
+// skirting boards
+box(ROOM.w, 0.12, 0.04, trimMat, 0, 0.06, -ROOM.d / 2 + 0.02);
+box(ROOM.w, 0.12, 0.04, trimMat, 0, 0.06, ROOM.d / 2 - 0.02);
+box(0.04, 0.12, ROOM.d, trimMat, -ROOM.w / 2 + 0.02, 0.06, 0);
+box(0.04, 0.12, ROOM.d, trimMat, ROOM.w / 2 - 0.02, 0.06, 0);
+
+// ---------------------------------------------------------------- window (left wall)
+const skyTex = canvasTexture(512, 384, (g, w, h) => {
+  const grad = g.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, '#070b2a'); grad.addColorStop(0.55, '#2a2660'); grad.addColorStop(0.85, '#b85a3a'); grad.addColorStop(1, '#f0a65a');
+  g.fillStyle = grad; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#fff';
+  for (let i = 0; i < 140; i++) { g.globalAlpha = rand(0.3, 1); g.fillRect(Math.random() * w, Math.random() * h * 0.55, rand(1, 2.2), rand(1, 2.2)); }
+  g.globalAlpha = 1;
+  g.fillStyle = '#fdf3d0'; g.beginPath(); g.arc(w * 0.72, h * 0.22, 26, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#2a2660'; g.beginPath(); g.arc(w * 0.72 + 12, h * 0.22 - 6, 22, 0, Math.PI * 2); g.fill();
+  // distant houses / trees
+  g.fillStyle = '#100c1e';
+  for (let x = 0; x < w; x += 22) { const hh = rand(30, 90); g.fillRect(x, h - hh, 20, hh); if (Math.random() < 0.4) { g.fillStyle = '#ffd98a'; g.fillRect(x + 6, h - hh + 10, 5, 6); g.fillStyle = '#100c1e'; } }
+  g.beginPath(); g.moveTo(0, h); for (let x = 0; x <= w; x += 8) g.lineTo(x, h - 20 - Math.abs(Math.sin(x * 0.05)) * 25 - rand(0, 5)); g.lineTo(w, h); g.fill();
+});
+const WIN = { x: -ROOM.w / 2, y: 1.85, z: 0.3, w: 2.0, h: 1.5 };
+const sky = new THREE.Mesh(new THREE.PlaneGeometry(WIN.w, WIN.h), new THREE.MeshBasicMaterial({ map: skyTex }));
+sky.position.set(WIN.x + 0.01, WIN.y, WIN.z); sky.rotation.y = Math.PI / 2; scene.add(sky);
+// frame + mullions + sill
+const fx = WIN.x + 0.04;
+box(0.08, 0.1, WIN.w + 0.16, trimMat, fx, WIN.y + WIN.h / 2 + 0.05, WIN.z);
+box(0.08, 0.1, WIN.w + 0.16, trimMat, fx, WIN.y - WIN.h / 2 - 0.05, WIN.z);
+box(0.08, WIN.h + 0.2, 0.1, trimMat, fx, WIN.y, WIN.z - WIN.w / 2 - 0.05);
+box(0.08, WIN.h + 0.2, 0.1, trimMat, fx, WIN.y, WIN.z + WIN.w / 2 + 0.05);
+box(0.06, WIN.h, 0.05, trimMat, fx, WIN.y, WIN.z);
+box(0.06, 0.05, WIN.w, trimMat, fx, WIN.y, WIN.z);
+box(0.22, 0.06, WIN.w + 0.4, trimMat, WIN.x + 0.11, WIN.y - WIN.h / 2 - 0.13, WIN.z);
+const curtainMat = new THREE.MeshStandardMaterial({ color: 0x6a2f3f, roughness: 0.9 });
+box(0.12, 2.3, 0.5, curtainMat, WIN.x + 0.14, 1.75, WIN.z - WIN.w / 2 - 0.35);
+box(0.12, 2.3, 0.5, curtainMat, WIN.x + 0.14, 1.75, WIN.z + WIN.w / 2 + 0.35);
+box(0.04, 0.04, WIN.w + 1.5, darkWood, WIN.x + 0.16, 2.92, WIN.z);
+
+// moonlight through the window
+const moon = new THREE.DirectionalLight(0x9fbcff, 1.3);
+moon.position.set(WIN.x - 2, 3.2, WIN.z + 0.4);
+moon.target.position.set(0.5, 0.4, 0.4);
+moon.castShadow = true;
+moon.shadow.mapSize.set(Q.shadowMap, Q.shadowMap);
+moon.shadow.camera.left = -6; moon.shadow.camera.right = 6; moon.shadow.camera.top = 5; moon.shadow.camera.bottom = -5;
+moon.shadow.camera.near = 0.5; moon.shadow.camera.far = 20; moon.shadow.bias = -0.0005;
+scene.add(moon, moon.target);
+scene.add(new THREE.AmbientLight(0x6a6a90, 0.55));
+scene.add(new THREE.HemisphereLight(0x8d98d2, 0x4a3a2a, 0.5));
+// dimmed ceiling pendant over the sitting area
+cyl(0.01, 0.01, 0.5, darkWood, 0, ROOM.h - 0.25, 0.9);
+const pendant = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.24, 0.22, 24, 1, true), new THREE.MeshStandardMaterial({ color: 0x2a2a30, emissive: 0xffd9a0, emissiveIntensity: 0.25, side: THREE.DoubleSide, roughness: 0.6 }));
+pendant.position.set(0, ROOM.h - 0.6, 0.9); scene.add(pendant);
+const pendantLight = new THREE.PointLight(0xffe2b8, 7, 9, 2);
+pendantLight.position.set(0, ROOM.h - 0.75, 0.9); scene.add(pendantLight);
+
+// ---------------------------------------------------------------- TV + stand
+const TV = { x: 0, y: 1.2, z: -ROOM.d / 2 + 0.4, w: 1.6, h: 0.9 };
+box(2.6, 0.55, 0.5, darkWood, TV.x, 0.275, TV.z);                       // cabinet
+box(2.4, 0.02, 0.44, new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 0.4 }), TV.x, 0.56, TV.z);
+box(0.7, 0.02, 0.3, new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.6, roughness: 0.3 }), TV.x, 0.57, TV.z);
+box(0.25, 0.14, 0.1, new THREE.MeshStandardMaterial({ color: 0x111111 }), TV.x, 0.64, TV.z);
+const tvFrame = box(TV.w + 0.12, TV.h + 0.12, 0.05, new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.35, metalness: 0.3 }), TV.x, TV.y, TV.z);
+sphere(0.008, new THREE.MeshBasicMaterial({ color: 0xff2020 }), TV.x + TV.w / 2 - 0.02, TV.y - TV.h / 2 - 0.035, TV.z + 0.026);
+// A "hole" in the WebGL layer so the CSS3D iframe underneath shows through
+const hole = new THREE.Mesh(new THREE.PlaneGeometry(TV.w, TV.h), new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0, blending: THREE.NoBlending, side: THREE.DoubleSide }));
+hole.position.set(TV.x, TV.y, TV.z + 0.027); scene.add(hole);
+
+// the screen element (placeholder until a link is loaded)
+const screenEl = document.createElement('div');
+screenEl.className = 'tvscreen';
+function showWaiting(sub) {
+  screenEl.innerHTML = `<div class="nosignal"><div class="pulse"></div>
+    <div>WAITING FOR ${CHANNEL.name.toUpperCase()}</div>
+    <small id="waitSub">${sub || 'checking whether the channel is live…'}</small>
+    <small>the TV switches to the stream by itself when the channel goes live</small></div>`;
+}
+showWaiting();
+const screenObj = new CSS3DObject(screenEl);
+screenObj.position.set(TV.x, TV.y, TV.z + 0.028);
+screenObj.scale.setScalar(TV.w / 640);
+scene.add(screenObj);
+
+// TV glow onto the room
+const tvLight = new THREE.PointLight(0x8fb0ff, 3, 7, 2);
+tvLight.position.set(TV.x, TV.y + 0.1, TV.z + 0.7); scene.add(tvLight);
+
+// soundbar + a plant next to the TV
+box(1.4, 0.08, 0.1, new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 }), TV.x, 0.62, TV.z + 0.18);
+const potMat = new THREE.MeshStandardMaterial({ color: 0xb35a3a, roughness: 0.8 });
+cyl(0.18, 0.14, 0.3, potMat, -2.6, 0.15, TV.z + 0.1);
+const leafMat = new THREE.MeshStandardMaterial({ color: 0x2f7a3a, roughness: 0.7, side: THREE.DoubleSide });
+for (let i = 0; i < 9; i++) {
+  const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), leafMat);
+  leaf.scale.set(0.35, 1, 0.12); leaf.castShadow = true;
+  const a = i / 9 * Math.PI * 2;
+  leaf.position.set(-2.6 + Math.cos(a) * 0.1, 0.55, TV.z + 0.1 + Math.sin(a) * 0.1);
+  leaf.rotation.set(Math.sin(a) * 0.6, a, -Math.cos(a) * 0.6);
+  scene.add(leaf);
+}
+
+// framed banana poster on the back wall
+const posterTex = canvasTexture(256, 320, (g, w, h) => {
+  g.fillStyle = '#f5e9c6'; g.fillRect(0, 0, w, h);
+  g.font = '150px serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('🍌', w / 2, h / 2 - 20);
+  g.fillStyle = '#5a3a1a'; g.font = 'bold 20px sans-serif'; g.fillText('HOME SWEET HOME', w / 2, h - 40);
+});
+box(0.72, 0.9, 0.04, new THREE.MeshStandardMaterial({ color: 0x1a1410 }), 2.6, 1.95, -ROOM.d / 2 + 0.03);
+const poster = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.78), new THREE.MeshStandardMaterial({ map: posterTex, roughness: 0.9 }));
+poster.position.set(2.6, 1.95, -ROOM.d / 2 + 0.055); scene.add(poster);
+
+// ---------------------------------------------------------------- floor lamp
+const lampPos = new THREE.Vector3(4.0, 0, -3.4);
+cyl(0.18, 0.2, 0.03, darkWood, lampPos.x, 0.015, lampPos.z);
+cyl(0.02, 0.02, 1.5, new THREE.MeshStandardMaterial({ color: 0x8a7a5a, metalness: 0.7, roughness: 0.3 }), lampPos.x, 0.78, lampPos.z);
+const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.27, 0.34, 24, 1, true), new THREE.MeshStandardMaterial({ color: 0xf6d9a6, emissive: 0xffb066, emissiveIntensity: 0.55, side: THREE.DoubleSide, roughness: 0.9 }));
+shade.position.set(lampPos.x, 1.62, lampPos.z); scene.add(shade);
+const lampLight = new THREE.PointLight(0xffb36b, 14, 9, 2);
+lampLight.position.set(lampPos.x, 1.55, lampPos.z);
+lampLight.castShadow = Q.lampShadow; lampLight.shadow.mapSize.set(1024, 1024); lampLight.shadow.bias = -0.002;
+scene.add(lampLight);
+
+// ---------------------------------------------------------------- rug + coffee table + fruit bowl
+const rugTex = canvasTexture(512, 360, (g, w, h) => {
+  g.fillStyle = '#7d2f33'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#a4434a'; g.fillRect(28, 28, w - 56, h - 56);
+  g.fillStyle = '#7d2f33'; g.fillRect(52, 52, w - 104, h - 104);
+  g.strokeStyle = '#d9a441'; g.lineWidth = 3; g.strokeRect(40, 40, w - 80, h - 80);
+  g.strokeStyle = 'rgba(217,164,65,0.6)'; g.lineWidth = 2;
+  for (let x = 80; x < w - 60; x += 60) for (let y = 80; y < h - 60; y += 60) {
+    g.beginPath(); g.moveTo(x, y - 18); g.lineTo(x + 18, y); g.lineTo(x, y + 18); g.lineTo(x - 18, y); g.closePath(); g.stroke();
+  }
+});
+const rug = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.6), new THREE.MeshStandardMaterial({ map: rugTex, roughness: 1 }));
+rug.rotation.x = -Math.PI / 2; rug.position.set(0, 0.006, 0.4); rug.receiveShadow = true; scene.add(rug);
+
+box(1.2, 0.05, 0.6, darkWood, 0, 0.45, 0);
+for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) cyl(0.02, 0.02, 0.43, darkWood, sx * 0.52, 0.215, sz * 0.22);
+const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.19, 28, 14, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xe9e2d3, roughness: 0.4, side: THREE.DoubleSide }));
+bowl.position.set(0, 0.665, 0); bowl.castShadow = true; bowl.receiveShadow = true; scene.add(bowl);
+sphere(0.07, new THREE.MeshStandardMaterial({ color: 0xd42b2b, roughness: 0.35 }), -0.06, 0.54, 0.03);
+sphere(0.065, new THREE.MeshStandardMaterial({ color: 0xff8c1a, roughness: 0.6 }), 0.07, 0.535, -0.04);
+sphere(0.05, new THREE.MeshStandardMaterial({ color: 0x8cc63f, roughness: 0.45 }), 0.02, 0.6, 0.07);
+const banana = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.026, 8, 18, Math.PI * 0.85), new THREE.MeshStandardMaterial({ color: 0xf2d94a, roughness: 0.5 }));
+banana.position.set(0.0, 0.62, 0.0); banana.rotation.set(Math.PI / 2 + 0.3, 0.2, 1.1); banana.castShadow = true; scene.add(banana);
+
+// ---------------------------------------------------------------- sofa
+const sofa = new THREE.Group(); sofa.position.set(0, 0, 1.6); scene.add(sofa);
+const sofaMat = new THREE.MeshStandardMaterial({ color: 0x3a8288, roughness: 0.95 });
+const cushionMat = new THREE.MeshStandardMaterial({ color: 0x448f95, roughness: 0.95 });
+box(2.3, 0.4, 0.95, sofaMat, 0, 0.35, 0, sofa);
+box(1.05, 0.2, 0.85, cushionMat, -0.56, 0.65, 0.02, sofa);
+box(1.05, 0.2, 0.85, cushionMat, 0.56, 0.65, 0.02, sofa);
+box(2.3, 0.62, 0.28, sofaMat, 0, 0.79, 0.38, sofa);
+const bc1 = box(1.05, 0.42, 0.14, cushionMat, -0.56, 0.93, 0.22, sofa); bc1.rotation.x = -0.12;
+const bc2 = box(1.05, 0.42, 0.14, cushionMat, 0.56, 0.93, 0.22, sofa); bc2.rotation.x = -0.12;
+box(0.28, 0.72, 0.98, sofaMat, -1.29, 0.51, 0, sofa);
+box(0.28, 0.72, 0.98, sofaMat, 1.29, 0.51, 0, sofa);
+for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) cyl(0.03, 0.025, 0.16, darkWood, sx * 1.15, 0.08, sz * 0.38, sofa);
+const pillow = box(0.36, 0.36, 0.11, new THREE.MeshStandardMaterial({ color: 0xd9a441, roughness: 0.9 }), 0.85, 0.95, 0.18, sofa); pillow.rotation.set(-0.15, 0, 0.35);
+const remote = box(0.17, 0.02, 0.05, new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5 }), 0.35, 0.76, 0.1, sofa); remote.rotation.y = 0.5;
+box(0.14, 0.005, 0.02, new THREE.MeshStandardMaterial({ color: 0x444 }), 0.35, 0.775, 0.1, sofa).rotation.y = 0.5;
+
+// ---------------------------------------------------------------- the fruit fly
+function buildFly() {
+  const group = new THREE.Group();
+  const tan = new THREE.MeshStandardMaterial({ color: 0xb8823f, roughness: 0.6 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x4a2f14, roughness: 0.7 });
+
+  const stripeTex = canvasTexture(64, 64, (g, w, h) => {
+    g.fillStyle = '#b8823f'; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#5a3418'; for (let i = 0; i < 3; i++) g.fillRect(0, 36 + i * 8, w, 2.5);
+    g.fillStyle = '#3a2210'; g.fillRect(0, 58, w, 6);
+  });
+  const abGeo = new THREE.SphereGeometry(0.1, 24, 16); abGeo.rotateX(Math.PI / 2);
+  const abdomen = new THREE.Mesh(abGeo, new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.55 }));
+  abdomen.scale.set(1.05, 0.9, 1.35); abdomen.position.set(0, -0.005, 0.19); abdomen.castShadow = true; group.add(abdomen);
+
+  const thorax = new THREE.Mesh(new THREE.SphereGeometry(0.09, 24, 16), tan);
+  thorax.scale.set(1, 0.9, 1.15); thorax.castShadow = true; group.add(thorax);
+
+  const head = new THREE.Group(); head.position.set(0, 0.02, -0.13); group.add(head);
+  const headBall = new THREE.Mesh(new THREE.SphereGeometry(0.065, 20, 16), tan); headBall.castShadow = true; head.add(headBall);
+  const eyeTex = canvasTexture(64, 64, (g, w, h) => {
+    g.fillStyle = '#c92a22'; g.fillRect(0, 0, w, h); g.fillStyle = '#7a1410';
+    for (let y = 0; y < h; y += 8) for (let x = 0; x < w; x += 8) { g.beginPath(); g.arc(x + 4 + ((y / 8) % 2) * 4, y + 4, 2.2, 0, Math.PI * 2); g.fill(); }
+  }, [6, 3]);
+  const eyeMat = new THREE.MeshStandardMaterial({ map: eyeTex, roughness: 0.3, emissive: 0x3a0000 });
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 20, 16), eyeMat);
+    eye.position.set(s * 0.048, 0.01, -0.025); eye.scale.set(1, 1.2, 0.95); eye.castShadow = true; head.add(eye);
+    const ant = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 8), dark); ant.position.set(s * 0.02, 0.045, -0.055); head.add(ant);
+    segment(new THREE.Vector3(s * 0.02, 0.045, -0.055), new THREE.Vector3(s * 0.05, 0.09, -0.09), 0.003, dark, head);
+  }
+  const prob = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.05, 8), dark); prob.position.set(0, -0.06, -0.02); head.add(prob);
+
+  // wings: pivot at the thorax, blade extends along +z (backwards)
+  const wingShape = new THREE.Shape(); wingShape.absellipse(0, 0.17, 0.062, 0.175, 0, Math.PI * 2, false, 0);
+  const wingGeo = new THREE.ShapeGeometry(wingShape, 40); wingGeo.rotateX(Math.PI / 2);
+  const wingMat = new THREE.MeshPhysicalMaterial({ color: 0xdfeeff, transparent: true, opacity: 0.38, roughness: 0.12, metalness: 0.15, side: THREE.DoubleSide, iridescence: 0.7, iridescenceIOR: 1.3, depthWrite: false });
+  const veinMat = new THREE.LineBasicMaterial({ color: 0x6b5a3a, transparent: true, opacity: 0.6 });
+  const wings = [];
+  for (const s of [-1, 1]) {
+    const w = new THREE.Group(); w.position.set(s * 0.04, 0.078, -0.01); w.rotation.order = 'ZYX';
+    const blade = new THREE.Mesh(wingGeo, wingMat); blade.castShadow = false; w.add(blade);
+    for (const [ex, ez] of [[0.02, 0.34], [-0.035, 0.31], [0.05, 0.27], [-0.01, 0.33]]) {
+      const pts = [new THREE.Vector3(0, 0.001, 0), new THREE.Vector3(ex * s, 0.001, ez)];
+      w.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), veinMat));
+    }
+    w.userData.side = s; group.add(w); wings.push(w);
+  }
+
+  // six legs
+  const legs = new THREE.Group(); group.add(legs);
+  for (const s of [-1, 1]) for (const [z, dz1, dz2] of [[-0.07, -0.05, -0.12], [0.0, 0.0, 0.0], [0.08, 0.07, 0.14]]) {
+    const hip = new THREE.Vector3(s * 0.06, -0.03, z);
+    const knee = new THREE.Vector3(s * 0.16, 0.035, z + dz1);
+    const foot = new THREE.Vector3(s * 0.22, -0.13, z + dz2);
+    segment(hip, knee, 0.007, dark, legs);
+    segment(knee, foot, 0.005, dark, legs);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.006, 6, 6), dark); tip.position.copy(foot); legs.add(tip);
+  }
+  group.traverse(o => { if (o.isMesh) o.userData.fly = true; });
+  return { group, head, wings, legs, abdomen };
+}
+const fly = buildFly();
+const FLY_SCALE = 1.5;
+fly.group.scale.setScalar(FLY_SCALE);
+scene.add(fly.group);
+const SEAT = new THREE.Vector3(-0.56, 0.75 + 0.13 * FLY_SCALE, 1.62);
+fly.group.position.copy(SEAT);
+
+// flight path: seat -> hover over the fruit bowl -> a lap of the room -> back to the seat
+const curve = new THREE.CatmullRomCurve3([
+  SEAT.clone(), new THREE.Vector3(-0.45, 1.45, 1.0), new THREE.Vector3(0.05, 0.95, 0.12), new THREE.Vector3(0.0, 0.92, 0.05),
+  new THREE.Vector3(1.3, 1.6, -1.4), new THREE.Vector3(2.6, 2.3, 0.2), new THREE.Vector3(0.8, 2.5, 2.4), new THREE.Vector3(-1.6, 1.8, 2.6),
+  new THREE.Vector3(-1.1, 1.3, 2.0), SEAT.clone()
+], false, 'centripetal');
+
+let flight = null, flyPhase = 'sitting';   // sitting | takeoff | flying | hover
+let nextAutoFlight = 16 + Math.random() * 14;
+const FLIGHT_DUR = 12;
+function startFlight() { if (!flight) flight = { start: clock.getElapsedTime() }; }
+
+const headTarget = new THREE.Euler(); let nextHeadChange = 2, flutterUntil = 0, nextFlutter = 3;
+const sitQuat = new THREE.Quaternion();
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3();
+
+function animateFly(t, dt) {
+  const { group, head, wings, legs, abdomen } = fly;
+  abdomen.scale.y = 0.85 + Math.sin(t * 4) * 0.02;
+
+  if (!flight && t > nextAutoFlight) startFlight();
+
+  if (flight) {
+    const e = t - flight.start;
+    if (e >= FLIGHT_DUR) {
+      flight = null; group.position.copy(SEAT); group.quaternion.copy(sitQuat);
+      nextAutoFlight = t + 22 + Math.random() * 25;
+    } else {
+      let u, hover = false;
+      if (e < 3.2) u = easeInOut(e / 3.2) * 0.24;
+      else if (e < 5.6) { u = 0.24; hover = true; }
+      else u = 0.24 + 0.76 * easeInOut((e - 5.6) / (FLIGHT_DUR - 5.6));
+      flyPhase = e < 0.8 ? 'takeoff' : hover ? 'hover' : 'flying';
+      const p = curve.getPoint(u);
+      if (hover) { p.x += Math.sin(e * 7) * 0.05; p.y += Math.sin(e * 11) * 0.03; p.z += Math.cos(e * 5) * 0.05; }
+      p.y += Math.sin(t * 23) * 0.008;
+      group.position.copy(p);
+
+      if (u > 0.94) _q.copy(sitQuat);
+      else {
+        const target = hover ? _v.set(0, 0.6, 0) : curve.getPoint(Math.min(u + 0.015, 1), _v);
+        _m.lookAt(p, target, _up); _q.setFromRotationMatrix(_m);
+      }
+      group.quaternion.slerp(_q, Math.min(1, dt * 5));
+
+      const flap = Math.sin(t * 150);
+      for (const w of wings) { const s = w.userData.side; w.rotation.set(0.1, s * 1.25, -s * flap * 0.85); }
+      legs.rotation.x = THREE.MathUtils.lerp(legs.rotation.x, 0.45, dt * 4);
+      legs.position.y = THREE.MathUtils.lerp(legs.position.y, 0.03, dt * 4);
+      head.rotation.set(THREE.MathUtils.lerp(head.rotation.x, 0, dt * 4), THREE.MathUtils.lerp(head.rotation.y, 0, dt * 4), 0);
+      return;
+    }
+  }
+
+  // --- sitting on the sofa
+  flyPhase = 'sitting';
+  group.position.y = SEAT.y + Math.sin(t * 3) * 0.003;
+  legs.rotation.x = THREE.MathUtils.lerp(legs.rotation.x, 0, dt * 6);
+  legs.position.y = THREE.MathUtils.lerp(legs.position.y, 0, dt * 6);
+  if (t > nextHeadChange) {
+    const r = Math.random();
+    if (r < 0.55) headTarget.set(rand(-0.05, 0.1), rand(-0.12, 0.12), 0);          // watching the TV
+    else if (r < 0.8) headTarget.set(rand(-0.1, 0.15), rand(-0.6, 0.6), rand(-0.2, 0.2)); // glancing around
+    else headTarget.set(0.1, 0, rand(-0.35, 0.35));                                       // curious head tilt
+    nextHeadChange = t + rand(1.5, 5);
+  }
+  head.rotation.x = THREE.MathUtils.lerp(head.rotation.x, headTarget.x, dt * 5);
+  head.rotation.y = THREE.MathUtils.lerp(head.rotation.y, headTarget.y, dt * 5);
+  head.rotation.z = THREE.MathUtils.lerp(head.rotation.z, headTarget.z, dt * 5);
+
+  if (t > nextFlutter) { flutterUntil = t + rand(0.2, 0.45); nextFlutter = t + rand(3, 9); }
+  const fluttering = t < flutterUntil;
+  for (const w of wings) {
+    const s = w.userData.side;
+    const spread = fluttering ? 0.14 + (0.5 + 0.5 * Math.sin(t * 95)) * 0.5 : 0.14;
+    const lift = fluttering ? 0.15 * Math.sin(t * 95) : 0;
+    w.rotation.x = THREE.MathUtils.lerp(w.rotation.x, -0.08 - lift, dt * 20);
+    w.rotation.y = THREE.MathUtils.lerp(w.rotation.y, s * spread, dt * 20);
+    w.rotation.z = THREE.MathUtils.lerp(w.rotation.z, 0, dt * 20);
+  }
+}
+
+// click the fly -> it takes off (ignores drags)
+const raycaster = new THREE.Raycaster(); const pointer = new THREE.Vector2(); let downPos = null;
+glRenderer.domElement.addEventListener('pointerdown', e => { downPos = [e.clientX, e.clientY]; });
+glRenderer.domElement.addEventListener('pointerup', e => {
+  if (!downPos || Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]) > 5) return;
+  pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObject(fly.group, true);
+  if (hit.length) startFlight();
+});
+
+// ---------------------------------------------------------------- TV controls
+const toastEl = document.getElementById('toast'); let toastTimer;
+function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600); }
+
+// ---------------------------------------------------------------- channel watcher
+// no on-screen panel any more: the status goes into the window title instead
+function setStatus(kind, text) { document.title = (kind === 'live' ? '🔴 ' : '') + text; }
+const fmtTime = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+// mode: 'live' = the channel's stream is on, 'binge' = playing one of its uploads while waiting,
+//       'idle' = nothing on, 'fallback' = no helper server, using YouTube's channel-live embed
+let mode = 'idle', tvOn = false, iframe = null, currentVideo = null, playerState = -1;
+let playlist = [], queue = [], bingeVideo = null, nowPlayingTitle = '', mountedAt = 0, lastCheckStr = '', nextInfo = '';
+let lastFallbackLoad = 0, playlistError = '';
+
+function mountPlayer(src) {
+  iframe = document.createElement('iframe');
+  iframe.src = src;
+  iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+  // ask the embedded player to report its state (0 ended, 1 playing, 2 paused, 3 buffering, 5 cued, -1 unstarted)
+  const listen = () => iframe && iframe.contentWindow && iframe.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), 'https://www.youtube.com');
+  iframe.addEventListener('load', () => { listen(); setTimeout(listen, 800); setTimeout(listen, 2500); });
+  playerState = -1; mountedAt = Date.now();
+  screenEl.innerHTML = ''; screenEl.appendChild(iframe);
+}
+// Sound: browsers only allow sound-on playback after the page has been clicked once, so the TV starts muted,
+// unmutes itself on the first click, and every later video comes on with sound straight away.
+let soundOn = false, muted = false;   // soundOn: the browser has let us unmute at least once; muted: the user's own choice
+const playerCmd = (func, args = []) => iframe && iframe.contentWindow && iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
+function enableSound() {
+  soundOn = true;
+  const sh = document.getElementById('soundHint'); if (sh) sh.remove();
+  if (!muted) { playerCmd('unMute'); playerCmd('setVolume', [100]); playerCmd('playVideo'); }
+}
+function setMuted(m) {
+  muted = m;
+  if (m) playerCmd('mute'); else { soundOn = true; playerCmd('unMute'); playerCmd('setVolume', [100]); playerCmd('playVideo'); }
+  const b = document.getElementById('tbSound'); b.textContent = m ? '🔇' : '🔊'; b.classList.toggle('on', m);
+  toast(m ? 'Muted' : 'Sound on');
+}
+// the first tap anywhere (except on the buttons, which handle themselves) unlocks sound
+addEventListener('pointerdown', e => { if (!soundOn && !e.target.closest('#touchbar')) enableSound(); }, true);
+addEventListener('keydown', () => { if (!soundOn) enableSound(); }, true);
+if (navigator.userActivation && navigator.userActivation.hasBeenActive) enableSound();
+
+function onPlayerState(s) {
+  const prev = playerState; playerState = s;
+  if (s === 1 && soundOn && !muted) { playerCmd('unMute'); playerCmd('setVolume', [100]); }   // new video started -> sound on
+  if (s === 1 && muted) playerCmd('mute');
+  if (s === 0 && prev !== 0) {                 // finished
+    if (mode === 'binge') nextBinge();
+    else if (mode === 'live') checkLive();     // stream over -> re-check, then back to the binge
+  }
+}
+addEventListener('message', e => {
+  let host; try { host = new URL(e.origin).hostname; } catch { return; }
+  if (!/(^|\.)youtube\.com$/.test(host)) return;
+  let d; try { d = JSON.parse(e.data); } catch { return; }
+  if (d.event === 'infoDelivery' && d.info) {
+    if ('playerState' in d.info) onPlayerState(d.info.playerState);
+    if (d.info.videoData && d.info.videoData.title && mode === 'binge') { nowPlayingTitle = d.info.videoData.title; updateStatus(); }
+  } else if (d.event === 'onStateChange') onPlayerState(d.info);
+  else if (d.event === 'onError' && mode === 'binge') setTimeout(nextBinge, 1500);   // unplayable upload -> skip it
+});
+const embedUrl = (path) => {
+  const origin = location.protocol.startsWith('http') ? `&origin=${encodeURIComponent(location.origin)}` : '';
+  return `https://www.youtube.com/embed/${path}autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1${origin}`;
+};
+
+function updateStatus() {
+  if (mode === 'live') setStatus('live', `LIVE · ${nowPlayingTitle || CHANNEL.name}`);
+  else if (mode === 'binge') setStatus('wait', `${CHANNEL.name} is offline${nextInfo} · binge-watching: ${nowPlayingTitle || bingeVideo.id} · checked ${lastCheckStr}`);
+  else if (mode === 'idle') setStatus('wait', `${CHANNEL.name} is offline${nextInfo}${playlistError ? ' · ' + playlistError : ''} · checked ${lastCheckStr}`);
+}
+
+function playLive(id, title) {
+  mountPlayer(embedUrl(`${id}?`));
+  mode = 'live'; currentVideo = id; tvOn = true; nowPlayingTitle = title || '';
+  updateStatus();
+  toast(`${CHANNEL.name} is live! Switching the TV over.`);
+}
+async function loadPlaylist() {
+  const r = await fetch(`/api/videos?handle=${encodeURIComponent(CHANNEL.handle)}`, { cache: 'no-store' });
+  const j = await r.json();
+  if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+  playlist = j.videos;
+  queue = [];
+}
+const shuffled = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const k = Math.floor(Math.random() * (i + 1)); [a[i], a[k]] = [a[k], a[i]]; } return a; };
+function nextBinge() {
+  const pool = playlist.filter(v => v.id !== currentVideo);
+  if (!pool.length) { mode = 'idle'; tvOn = false; showWaiting('no uploads found to binge on'); updateStatus(); return; }
+  if (!queue.length) queue = shuffled(pool);
+  bingeVideo = queue.shift();
+  if (bingeVideo.id === currentVideo) bingeVideo = queue.shift() || pool[0];
+  mode = 'binge'; tvOn = true; nowPlayingTitle = bingeVideo.title || '';
+  mountPlayer(embedUrl(`${bingeVideo.id}?`));
+  updateStatus();
+}
+async function startBinge() {
+  try {
+    if (!playlist.length) await loadPlaylist();
+    playlistError = '';
+    nextBinge();
+  } catch (err) {
+    playlistError = `couldn't fetch the channel's videos (${err.message})`;
+    mode = 'idle'; tvOn = false; showWaiting(playlistError); updateStatus();
+  }
+}
+
+async function checkLive() {
+  try {
+    const r = await fetch(`/api/live?handle=${encodeURIComponent(CHANNEL.handle)}`, { cache: 'no-store' });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+    lastCheckStr = fmtTime(new Date());
+    nextInfo = j.upcoming && j.scheduledStart
+      ? ` · next stream ${new Date(j.scheduledStart * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`
+      : '';
+    if (j.live && j.videoId) {
+      if (mode !== 'live' || currentVideo !== j.videoId) playLive(j.videoId, j.title);
+      else { nowPlayingTitle = j.title || nowPlayingTitle; updateStatus(); }
+    } else {
+      if (mode === 'live') { currentVideo = null; mode = 'idle'; toast(`${CHANNEL.name} went offline — back to the binge.`); }
+      if (mode !== 'binge') await startBinge();
+      else updateStatus();
+    }
+  } catch (err) {
+    // No helper server (page opened straight from disk, or plain static hosting). Fall back to YouTube's own
+    // "channel live" embed, which shows the stream whenever the channel is live; reload it while nothing plays.
+    const playing = playerState === 1 || playerState === 3;
+    if (mode !== 'fallback' || (!playing && Date.now() - lastFallbackLoad > 3 * 60 * 1000)) {
+      mode = 'fallback'; lastFallbackLoad = Date.now(); currentVideo = null; tvOn = true;
+      mountPlayer(embedUrl(`live_stream?channel=${CHANNEL.id}&`));
+    }
+    setStatus('warn', `Can't reach the helper server (${err.message}) — start with start-fly-tv.bat for live-checking and binge mode.`);
+  }
+}
+// binge watchdog: an upload that never starts (premiere countdown, blocked embed, ...) gets skipped
+setInterval(() => {
+  if (mode === 'binge' && ![1, 2, 3].includes(playerState) && Date.now() - mountedAt > 45000) nextBinge();
+}, 5000);
+
+function skipVideo() { if (mode === 'binge') nextBinge(); else if (mode === 'live') toast(`${CHANNEL.name} is live right now — no skipping that!`); else startBinge(); }
+let tvMode = false;
+function setTvMode(on) {
+  tvMode = on; webglDiv.classList.toggle('passthrough', on); controls.enabled = !on;
+  toast(on ? (isTouch ? 'TV mode: taps go to the player (tap 📺 again to go back)' : 'TV mode: clicks go to the player (press T again to go back to orbiting)') : 'Back to orbiting');
+}
+addEventListener('keydown', e => {
+  if (e.key === 't' || e.key === 'T') setTvMode(!tvMode);
+  if (e.key === 'f' || e.key === 'F') startFlight();
+  if (e.key === 'n' || e.key === 'N') skipVideo();
+  if (e.key === 'b' || e.key === 'B') brainVisible = !brainVisible;
+  if (e.key === 'm' || e.key === 'M') setMuted(!muted);
+});
+setTimeout(() => document.getElementById('hint').classList.add('fade'), 12000);
+
+// touch bar (phones/tablets)
+const tb = id => document.getElementById(id);
+tb('tbSound').onclick = () => setMuted(soundOn ? !muted : false);
+tb('tbNext').onclick = skipVideo;
+tb('tbTv').onclick = () => { setTvMode(!tvMode); tb('tbTv').classList.toggle('on', tvMode); };
+tb('tbBrain').onclick = () => { brainVisible = !brainVisible; tb('tbBrain').classList.toggle('on', !brainVisible); };
+tb('tbFly').onclick = () => startFlight();
+
+// ---------------------------------------------------------------- the connectome brain: a hologram above the fly
+// Template coordinates are microns in JRC2018U (x lateral, y dorsal→ventral, z anterior→posterior).
+const BRAIN = { center: new THREE.Vector3(313, 149, 85), scale: 1.05 / 580, lift: 0.66 };
+const toLocal = (x, y, z) => new THREE.Vector3((x - BRAIN.center.x) * BRAIN.scale, -(y - BRAIN.center.y) * BRAIN.scale, (z - BRAIN.center.z) * BRAIN.scale);
+const brainRig = new THREE.Group(); brainRig.position.copy(SEAT); scene.add(brainRig);   // follows the fly, stays upright
+const brainGroup = new THREE.Group(); brainGroup.position.y = BRAIN.lift; brainRig.add(brainGroup); // spins slowly
+let brainVisible = true, brainLoaded = false;
+
+// projector beam from the fly up to the hologram, plus a soft glow on the room
+const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.03, BRAIN.lift - 0.12, 32, 1, true),
+  new THREE.MeshBasicMaterial({ color: 0x3fc8ff, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+beam.position.y = (BRAIN.lift - 0.12) / 2 + 0.06; brainRig.add(beam);
+const brainLight = new THREE.PointLight(0x40c0ff, 1.5, 3.5, 2); brainLight.position.y = BRAIN.lift; brainRig.add(brainLight);
+
+const neuronObjs = [];   // { def, mat, nodes: Float32Array, parent: Int32Array, act, phase }
+async function loadBrain() {
+  try {
+    const r = await fetch(`/api/brain?lod=${Q.brainLod}`); if (!r.ok) throw new Error('HTTP ' + r.status);
+    const obj = new OBJLoader().parse(await r.text());
+    const shellMat = new THREE.MeshBasicMaterial({ color: 0x1b6fb0, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    obj.traverse(o => {
+      if (!o.isMesh) return;
+      o.material = shellMat;
+      o.geometry.translate(-BRAIN.center.x, -BRAIN.center.y, -BRAIN.center.z);
+      o.geometry.scale(BRAIN.scale, -BRAIN.scale, BRAIN.scale);
+    });
+    brainGroup.add(obj); brainLoaded = true;
+  } catch (e) { console.warn('brain surface unavailable:', e.message); }
+}
+async function loadNeuron(def) {
+  const r = await fetch(`/api/neuron?id=${def.id}&max=${Q.neuronNodes}`); if (!r.ok) throw new Error('HTTP ' + r.status);
+  const idx = new Map(), pts = [], par = [];
+  for (const line of (await r.text()).split('\n')) {
+    const p = line.trim().split(/\s+/); if (p.length < 7 || p[0][0] === '#') continue;
+    idx.set(+p[0], pts.length / 3); const v = toLocal(+p[2], +p[3], +p[4]); pts.push(v.x, v.y, v.z); par.push(+p[6]);
+  }
+  const parent = new Int32Array(par.length), segs = [];
+  for (let i = 0; i < par.length; i++) {
+    const pi = par[i] === -1 ? -1 : (idx.has(par[i]) ? idx.get(par[i]) : -1); parent[i] = pi;
+    if (pi >= 0) segs.push(pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2], pts[pi * 3], pts[pi * 3 + 1], pts[pi * 3 + 2]);
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(segs, 3));
+  const mat = new THREE.LineBasicMaterial({ color: GROUP_COLOR[def.group], transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false });
+  brainGroup.add(new THREE.LineSegments(geo, mat));
+  neuronObjs.push({ def, mat, nodes: new Float32Array(pts), parent, act: 0, phase: Math.random() * 10 });
+  brainLoaded = true;
+}
+loadBrain();
+NEURONS.forEach(d => loadNeuron(d).catch(e => console.warn('neuron unavailable:', d.id, e.message)));
+
+// signal "sparks" travelling along the active neurons
+const SPARKS = Q.sparks;
+const sparkPos = new Float32Array(SPARKS * 3).fill(999), sparkCol = new Float32Array(SPARKS * 3);
+const sparks = Array.from({ length: SPARKS }, () => ({ n: null, i: 0, p: 0, hop: 0, speed: 3 + Math.random() * 5 }));
+const sparkGeo = new THREE.BufferGeometry();
+sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+sparkGeo.setAttribute('color', new THREE.BufferAttribute(sparkCol, 3));
+const sparkPts = new THREE.Points(sparkGeo, new THREE.PointsMaterial({ size: 0.016, vertexColors: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+sparkPts.frustumCulled = false; brainGroup.add(sparkPts);
+
+// which neuron groups fire for what the fly is doing
+function brainTargets(stateKey) {
+  switch (stateKey) {
+    case 'takeoff': return { escape: 1, visual: 0.5 };
+    case 'flying': return { steer: 1, flow: 0.9, visual: 0.5 };
+    case 'hover': return { smell: 1, reward: 0.8, steer: 0.35 };
+    case 'watching': return { visual: 1, flow: 0.6 };
+    case 'live': return { visual: 1, flow: 0.6, reward: 0.8 };
+    default: return { clock: 0.6, punish: 0.25 };
+  }
+}
+const STATE_TEXT = {
+  takeoff: 'TAKEOFF · giant-fiber escape circuit', flying: 'FLYING · steering + optic-flow neurons',
+  hover: 'SNIFFING THE FRUIT BOWL · olfactory + dopamine reward', watching: 'WATCHING TV · visual system',
+  live: 'WATCHING THE LIVE STREAM · visual system + dopamine', idle: 'RESTING · circadian clock',
+};
+const labelCanvas = document.createElement('canvas'); labelCanvas.width = 1024; labelCanvas.height = 192;
+const labelTex = new THREE.CanvasTexture(labelCanvas); labelTex.colorSpace = THREE.SRGBColorSpace;
+const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex, transparent: true, depthWrite: false }));
+label.scale.set(1.15, 1.15 * 192 / 1024, 1); brainRig.add(label);
+let labelKey = '';
+function drawLabel(stateKey, actives) {
+  const key = stateKey + '|' + actives.join(','); if (key === labelKey) return; labelKey = key;
+  const g = labelCanvas.getContext('2d'); g.clearRect(0, 0, 1024, 192);
+  g.fillStyle = 'rgba(4,10,22,0.6)'; g.beginPath(); g.roundRect(0, 0, 1024, 192, 26); g.fill();
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#9fe6ff'; g.font = 'bold 42px system-ui, sans-serif'; g.fillText(STATE_TEXT[stateKey] || stateKey, 512, 50);
+  g.fillStyle = '#ffffff'; g.font = '34px system-ui, sans-serif'; g.fillText(actives.join('  ·  ') || '…loading neurons', 512, 104);
+  g.fillStyle = 'rgba(255,255,255,0.55)'; g.font = '25px system-ui, sans-serif'; g.fillText('FlyWire whole-brain connectome (FAFB) · neurons via Virtual Fly Brain · JRC2018U template', 512, 156);
+  labelTex.needsUpdate = true;
+}
+
+function updateBrain(t, dt) {
+  brainRig.visible = brainVisible && brainLoaded;
+  brainRig.position.lerp(fly.group.position, Math.min(1, dt * 6));
+  brainGroup.rotation.y = t * 0.22;
+  brainGroup.position.y = BRAIN.lift + Math.sin(t * 1.3) * 0.02;
+  label.position.y = brainGroup.position.y + 0.36;
+  if (!brainRig.visible) return;
+
+  const watching = flyPhase === 'sitting' && tvOn && (playerState === 1 || playerState === 3);
+  const stateKey = flyPhase !== 'sitting' ? flyPhase : (watching ? (mode === 'live' ? 'live' : 'watching') : 'idle');
+  const T = brainTargets(stateKey);
+  const actives = new Set(); let peak = 0;
+  for (const n of neuronObjs) {
+    const base = T[n.def.group] || 0;
+    const flicker = 0.55 + 0.45 * Math.sin(t * (3 + n.phase * 0.4) + n.phase);
+    const tgt = base ? base * (0.35 + 0.65 * flicker) : 0.02 + 0.02 * Math.sin(t * 0.7 + n.phase);
+    n.act += (tgt - n.act) * Math.min(1, dt * (tgt > n.act ? 9 : 2.5));
+    n.mat.opacity = 0.08 + n.act * 0.92;
+    if (base > 0.3) actives.add(n.def.name);
+    peak = Math.max(peak, n.act);
+  }
+  drawLabel(stateKey, [...actives]);
+  brainLight.intensity = 0.6 + peak * 2.4;
+
+  const activeN = neuronObjs.filter(n => n.act > 0.25);
+  for (let i = 0; i < SPARKS; i++) {
+    const s = sparks[i];
+    if (!s.n || s.hop <= 0 || s.n.act < 0.2) {
+      if (!activeN.length) { sparkPos[i * 3 + 1] = 999; s.n = null; continue; }
+      s.n = activeN[(Math.random() * activeN.length) | 0];
+      s.i = (Math.random() * s.n.parent.length) | 0; s.p = Math.random(); s.hop = 8 + ((Math.random() * 24) | 0);
+      const c = new THREE.Color(GROUP_COLOR[s.n.def.group]); sparkCol[i * 3] = c.r; sparkCol[i * 3 + 1] = c.g; sparkCol[i * 3 + 2] = c.b;
+    }
+    let a = s.i, b = s.n.parent[a];
+    if (b < 0) { s.hop = 0; sparkPos[i * 3 + 1] = 999; continue; }
+    s.p += dt * s.speed;
+    while (s.p >= 1 && b >= 0) { s.p -= 1; a = b; b = s.n.parent[a]; s.hop--; }
+    s.i = a; if (b < 0) { s.hop = 0; b = a; }
+    const nd = s.n.nodes, p = s.p;
+    sparkPos[i * 3] = nd[a * 3] + (nd[b * 3] - nd[a * 3]) * p;
+    sparkPos[i * 3 + 1] = nd[a * 3 + 1] + (nd[b * 3 + 1] - nd[a * 3 + 1]) * p;
+    sparkPos[i * 3 + 2] = nd[a * 3 + 2] + (nd[b * 3 + 2] - nd[a * 3 + 2]) * p;
+  }
+  sparkGeo.attributes.position.needsUpdate = true; sparkGeo.attributes.color.needsUpdate = true;
+}
+
+// start watching the channel
+checkLive();
+setInterval(checkLive, CHECK_EVERY_SECONDS * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkLive(); });
+
+// small handle for tinkering from the console
+window.flyTV = { camera, controls, fly, startFlight, checkLive, playLive, nextBinge, setTvMode, enableSound, neuronObjs, state: () => ({ mode, currentVideo, bingeVideo, playerState, playlist: playlist.length, soundOn, flyPhase, brainLoaded, neurons: neuronObjs.map(n => [n.def.name, n.parent.length, +n.act.toFixed(2)]) }) };
+
+// ---------------------------------------------------------------- loop
+const clock = new THREE.Clock();
+let last = 0;
+function frame() {
+  requestAnimationFrame(frame);
+  const t = clock.getElapsedTime(); const dt = Math.min(0.05, t - last); last = t;
+
+  animateFly(t, dt);
+  updateBrain(t, dt);
+
+  if (tvOn) {
+    tvLight.intensity = 5.5 + Math.sin(t * 13) * 1.2 + Math.sin(t * 37) * 0.7 + Math.sin(t * 2.1) * 0.8;
+    tvLight.color.setHSL(0.58 + Math.sin(t * 0.6) * 0.14, 0.55, 0.62);
+  } else {
+    tvLight.intensity = 2.2 + Math.sin(t * 8) * 0.3;
+    tvLight.color.setHSL(0.6, 0.5, 0.6);
+  }
+
+  controls.update();
+  glRenderer.render(scene, camera);
+  cssRenderer.render(scene, camera);
+}
+frame();
+
+addEventListener('resize', () => {
+  fitFov();
+  glRenderer.setSize(innerWidth, innerHeight); cssRenderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

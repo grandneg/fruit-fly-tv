@@ -1,0 +1,8 @@
+# Render blueprint: push this folder to GitHub, then "New → Blueprint" in Render and pick the repo.
+services:
+  - type: web
+    name: fruit-fly-tv
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true

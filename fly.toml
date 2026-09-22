@@ -1,0 +1,25 @@
+# Fly.io: run `fly launch --copy-config --yes` in this folder, then `fly deploy`.
+app = "fruit-fly-tv"
+primary_region = "iad"
+
+[build]
+
+[env]
+  PORT = "8765"
+
+[http_service]
+  internal_port = 8765
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
